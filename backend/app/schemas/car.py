@@ -7,7 +7,7 @@ response serialization).
 
 from __future__ import annotations
 
-from marshmallow import Schema, fields, validate
+from marshmallow import Schema, fields, validate, validates_schema, ValidationError
 
 
 class CarSchema(Schema):
@@ -94,7 +94,13 @@ class CarListQueryArgsSchema(Schema):
                 "Examples: '-price', 'price', 'year', '-mileage'. Default: '-year'."
             )
         },
-        validate=validate.Regexp(r"^-?(year|price|mileage|make|model)$"),
+        validate=validate.OneOf(
+            ["year", "price", "mileage", "make", "model", "-year", "-price", "-mileage", "-make", "-model"],
+            error=(
+                "Invalid sort. Allowed values: year, price, mileage, make, model "
+                "(optionally prefixed with '-' for descending)."
+            ),
+        ),
     )
 
     page = fields.Int(
@@ -109,6 +115,19 @@ class CarListQueryArgsSchema(Schema):
         metadata={"description": "Page size. Default: 12. Max: 50."},
         validate=validate.Range(min=1, max=50),
     )
+
+    @validates_schema
+    def validate_ranges(self, data, **kwargs):
+        """Validate min/max relationships for year and price."""
+        year_min = data.get("year_min")
+        year_max = data.get("year_max")
+        if year_min is not None and year_max is not None and year_min > year_max:
+            raise ValidationError({"year_min": ["Must be less than or equal to year_max."]})
+
+        price_min = data.get("price_min")
+        price_max = data.get("price_max")
+        if price_min is not None and price_max is not None and price_min > price_max:
+            raise ValidationError({"price_min": ["Must be less than or equal to price_max."]})
 
 
 class PaginatedCarsSchema(Schema):
