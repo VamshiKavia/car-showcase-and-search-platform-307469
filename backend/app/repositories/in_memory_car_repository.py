@@ -2,11 +2,15 @@
 In-memory car repository with seeded data.
 
 This module intentionally avoids database connections and external services.
-It is meant to be imported by API blueprints/routes.
 
 Repository capabilities:
 - list_cars(): filtering (q, make, model, year range, price range), sorting, pagination
 - get_car_by_id(): fetch one car or return None
+
+Notes:
+- This file now provides a class-based repository (InMemoryCarRepository) to support
+  pluggable persistence layers (e.g., Supabase) without changing routes.
+- Backwards-compatible module-level functions (list_cars/get_car_by_id) are preserved.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from dataclasses import asdict
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.domain.car import Car
+from app.repositories.car_repository import CarRepository
 
 
 def _seed_cars() -> List[Car]:
@@ -293,6 +298,81 @@ def _parse_sort(sort: Optional[str]) -> Tuple[str, str]:
     return raw, "asc"
 
 
+class InMemoryCarRepository(CarRepository):
+    """Car repository backed by a fixed in-memory list (seeded demo data)."""
+
+    def __init__(self, cars: Optional[List[Car]] = None):
+        self._cars: List[Car] = list(cars) if cars is not None else list(_SEEDED_CARS)
+
+    # PUBLIC_INTERFACE
+    def list_cars(
+        self,
+        *,
+        q: Optional[str] = None,
+        make: Optional[str] = None,
+        model: Optional[str] = None,
+        year_min: Optional[int] = None,
+        year_max: Optional[int] = None,
+        price_min: Optional[float] = None,
+        price_max: Optional[float] = None,
+        sort: Optional[str] = "-year",
+        page: int = 1,
+        page_size: int = 12,
+    ) -> Dict[str, Any]:
+        """
+        List cars with optional filtering, sorting, and pagination.
+
+        Returns the same envelope shape used by the API:
+          { "items": [...], "total": int, "page": int, "page_size": int }
+        """
+        # Defensive clamping even though request args schema validates this.
+        page = max(1, int(page or 1))
+        page_size = max(1, min(int(page_size or 12), _MAX_PAGE_SIZE))
+
+        sort_by, sort_dir = _parse_sort(sort)
+
+        filtered: List[Car] = []
+        for car in self._cars:
+            if not _matches_search(car, q):
+                continue
+            if not _matches_exact_text(car.make, make):
+                continue
+            if not _matches_exact_text(car.model, model):
+                continue
+            if not _in_int_range(car.year, year_min, year_max):
+                continue
+            if not _in_float_range(car.price, price_min, price_max):
+                continue
+            filtered.append(car)
+
+        reverse = (sort_dir or "desc").lower() != "asc"
+        filtered.sort(key=lambda c: _sort_key(c, sort_by), reverse=reverse)
+
+        page_items, total, total_pages = _paginate(filtered, page=page, page_size=page_size)
+
+        # Ensure returned page reflects clamping to last page.
+        clamped_page = max(1, min(page, total_pages))
+
+        return {
+            "items": [asdict(c) for c in page_items],
+            "total": total,
+            "page": clamped_page,
+            "page_size": page_size,
+        }
+
+    # PUBLIC_INTERFACE
+    def get_car_by_id(self, car_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a car by id; returns dict or None."""
+        for car in self._cars:
+            if car.id == car_id:
+                return asdict(car)
+        return None
+
+
+# A module-level default repository keeps previous import/usage patterns working.
+_DEFAULT_REPO = InMemoryCarRepository()
+
+
 # PUBLIC_INTERFACE
 def list_cars(
     *,
@@ -308,75 +388,25 @@ def list_cars(
     page_size: int = 12,
 ) -> Dict[str, Any]:
     """
-    List cars with optional filtering, sorting, and pagination.
-
-    Args:
-        q: Search text applied case-insensitively across make and model.
-        make/model: Case-insensitive exact match filters.
-        year_min/year_max: Inclusive year range filter.
-        price_min/price_max: Inclusive price range filter.
-        sort: Sort expression. Prefix with '-' for descending (e.g. '-price').
-        page: 1-based page index.
-        page_size: Items per page (clamped to max 50).
-
-    Returns:
-        A dict envelope:
-            {
-              "items": [<car dict>, ...],
-              "total": int,
-              "page": int,
-              "page_size": int
-            }
-        Items are plain dicts suitable for Marshmallow serialization.
+    Backwards-compatible function wrapper around the default InMemoryCarRepository.
     """
-    # Defensive clamping even though request args schema validates this.
-    page = max(1, int(page or 1))
-    page_size = max(1, min(int(page_size or 12), _MAX_PAGE_SIZE))
-
-    sort_by, sort_dir = _parse_sort(sort)
-
-    filtered: List[Car] = []
-    for car in _SEEDED_CARS:
-        if not _matches_search(car, q):
-            continue
-        if not _matches_exact_text(car.make, make):
-            continue
-        if not _matches_exact_text(car.model, model):
-            continue
-        if not _in_int_range(car.year, year_min, year_max):
-            continue
-        if not _in_float_range(car.price, price_min, price_max):
-            continue
-        filtered.append(car)
-
-    reverse = (sort_dir or "desc").lower() != "asc"
-    filtered.sort(key=lambda c: _sort_key(c, sort_by), reverse=reverse)
-
-    page_items, total, total_pages = _paginate(filtered, page=page, page_size=page_size)
-
-    # Ensure returned page reflects clamping to last page.
-    clamped_page = max(1, min(page, total_pages))
-
-    return {
-        "items": [asdict(c) for c in page_items],
-        "total": total,
-        "page": clamped_page,
-        "page_size": page_size,
-    }
+    return _DEFAULT_REPO.list_cars(
+        q=q,
+        make=make,
+        model=model,
+        year_min=year_min,
+        year_max=year_max,
+        price_min=price_min,
+        price_max=price_max,
+        sort=sort,
+        page=page,
+        page_size=page_size,
+    )
 
 
 # PUBLIC_INTERFACE
 def get_car_by_id(car_id: str) -> Optional[Dict[str, Any]]:
     """
-    Fetch a car by id.
-
-    Args:
-        car_id: The car identifier.
-
-    Returns:
-        The car as a plain dict if found, else None.
+    Backwards-compatible function wrapper around the default InMemoryCarRepository.
     """
-    for car in _SEEDED_CARS:
-        if car.id == car_id:
-            return asdict(car)
-    return None
+    return _DEFAULT_REPO.get_car_by_id(car_id)

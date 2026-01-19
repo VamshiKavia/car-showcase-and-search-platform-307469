@@ -19,8 +19,11 @@ from typing import Any, Dict
 from flask.views import MethodView
 from flask_smorest import Blueprint, abort
 
-from app.repositories import in_memory_car_repository
+from app.repositories.repository_factory import get_car_repository
 from app.schemas.car import CarListQueryArgsSchema, CarSchema, PaginatedCarsSchema
+
+# Resolve the active repository once at import time (app startup).
+_repo = get_car_repository()
 
 blp = Blueprint(
     "Cars",
@@ -58,7 +61,7 @@ class CarsCollection(MethodView):
             Envelope:
               { items: Car[], total: number, page: number, page_size: number }
         """
-        return in_memory_car_repository.list_cars(**args)
+        return _repo.list_cars(**args)
 
 
 @blp.route("/<string:car_id>")
@@ -79,7 +82,7 @@ class CarItem(MethodView):
         Raises:
             404: If the car does not exist.
         """
-        car = in_memory_car_repository.get_car_by_id(car_id)
+        car = _repo.get_car_by_id(car_id)
         if car is None:
             abort(404, message="Car not found")
         return car
