@@ -1,1 +1,3 @@
-# car-showcase-and-search-platform-307469
+# Project Repository
+
+This is the initial README file for the project.
