@@ -45,18 +45,19 @@ class CarsCollection(MethodView):
         List cars (search/filter/sort/pagination).
 
         Query Parameters:
-            q: Text search across make/model (case-insensitive)
+            q: Search text over make/model/name (case-insensitive; model is treated as "name")
+            make: Make filter (case-insensitive exact match)
+            model: Model filter (case-insensitive exact match)
             year_min/year_max: Inclusive year range filter
             price_min/price_max: Inclusive price range filter
-            sort_by: year|price|mileage|make|model
-            sort_dir: asc|desc
-            page: 1-based page index
-            page_size: page size (1..100)
+            sort: Sort expression like '-price', 'price', 'year' (default: '-year')
+            page: 1-based page index (default: 1)
+            page_size: Page size (default: 12, max: 50)
 
         Returns:
-            A paginated envelope with `items` plus pagination metadata.
+            Envelope:
+              { items: Car[], total: number, page: number, page_size: number }
         """
-        # Repository already returns an envelope matching PaginatedCarsSchema.
         return in_memory_car_repository.list_cars(**args)
 
 

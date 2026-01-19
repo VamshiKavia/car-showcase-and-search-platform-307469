@@ -42,13 +42,24 @@ class CarListQueryArgsSchema(Schema):
     """
     Query args for listing cars.
 
-    Designed to support basic search/filter/sort/pagination over the in-memory dataset.
+    Designed to support search/filter/sort/pagination over the in-memory dataset.
     """
 
     q = fields.Str(
         required=False,
         allow_none=True,
-        metadata={"description": "Search text applied across make/model (case-insensitive)."},
+        metadata={"description": "Search text applied across make/model/name (case-insensitive)."},
+    )
+
+    make = fields.Str(
+        required=False,
+        allow_none=True,
+        metadata={"description": "Filter by make (case-insensitive exact match)."},
+    )
+    model = fields.Str(
+        required=False,
+        allow_none=True,
+        metadata={"description": "Filter by model (case-insensitive exact match)."},
     )
 
     year_min = fields.Int(
@@ -73,21 +84,17 @@ class CarListQueryArgsSchema(Schema):
         metadata={"description": "Maximum price (inclusive)."},
     )
 
-    sort_by = fields.Str(
+    # Supports "-price" / "price" / "year" etc.
+    sort = fields.Str(
         required=False,
-        load_default="year",
+        load_default="-year",
         metadata={
             "description": (
-                "Field to sort by. Supported: year, price, mileage, make, model. Default: year."
+                "Sort key. Prefix with '-' for descending. "
+                "Examples: '-price', 'price', 'year', '-mileage'. Default: '-year'."
             )
         },
-        validate=validate.OneOf(["year", "price", "mileage", "make", "model"]),
-    )
-    sort_dir = fields.Str(
-        required=False,
-        load_default="desc",
-        metadata={"description": "Sort direction. Default: desc."},
-        validate=validate.OneOf(["asc", "desc"]),
+        validate=validate.Regexp(r"^-?(year|price|mileage|make|model)$"),
     )
 
     page = fields.Int(
@@ -99,8 +106,8 @@ class CarListQueryArgsSchema(Schema):
     page_size = fields.Int(
         required=False,
         load_default=12,
-        metadata={"description": "Page size. Default: 12. Max: 100."},
-        validate=validate.Range(min=1, max=100),
+        metadata={"description": "Page size. Default: 12. Max: 50."},
+        validate=validate.Range(min=1, max=50),
     )
 
 
@@ -111,4 +118,3 @@ class PaginatedCarsSchema(Schema):
     total = fields.Int(required=True, metadata={"description": "Total cars matching the filter (before pagination)."})
     page = fields.Int(required=True, metadata={"description": "Current 1-based page index."})
     page_size = fields.Int(required=True, metadata={"description": "Current page size."})
-    total_pages = fields.Int(required=True, metadata={"description": "Total number of pages."})
