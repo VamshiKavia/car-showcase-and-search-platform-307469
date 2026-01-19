@@ -35,9 +35,21 @@ CORS(
     app,
     resources={
         r"/*": {
+            # Allow explicit local dev origins, an explicitly configured frontend URL,
+            # and Kavia preview hostnames.
             "origins": _allowed_origins + [_kavia_preview_origin_re],
+            # Ensure preflight is handled for common methods.
+            "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            # Allow common headers used by fetch; keep permissive but safe.
+            "allow_headers": ["Content-Type", "Authorization", "Accept"],
+            # Important for proxies / caches: responses vary by Origin.
+            "vary_header": True,
         }
     },
+    # Critical: when a request Origin matches allowed origins/regex, reflect it back
+    # rather than returning the first configured origin (which caused localhost to be returned in preview).
+    supports_credentials=False,
+    always_send=True,
 )
 
 # Flask-Smorest / OpenAPI config (keeps Swagger UI under /docs).
